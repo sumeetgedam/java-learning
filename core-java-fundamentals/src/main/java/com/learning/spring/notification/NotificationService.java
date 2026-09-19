@@ -1,5 +1,8 @@
 package com.learning.spring.notification;
 
+import org.springframework.stereotype.Service;
+
+@Service
 public class NotificationService {
 
     private final NotificationSender sender;
