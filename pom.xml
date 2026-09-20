@@ -12,6 +12,7 @@
 
     <modules>
         <module>core-java-fundamentals</module>
+        <module>spring-boot-demo</module>
     </modules>
 
     <properties>
