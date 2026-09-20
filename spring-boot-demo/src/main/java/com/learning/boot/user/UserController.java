@@ -1,7 +1,10 @@
 package com.learning.boot.user;
 
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Positive;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -38,10 +41,12 @@ public class UserController {
 
     @GetMapping("/{id}")
     public ResponseEntity<User> findById(
-            @PathVariable long id
+            @PathVariable
+            @Positive(message = "ID must be positive")
+            long id
     ) {
         if(id != 1L) {
-            return ResponseEntity.notFound().build();
+            throw new UserNotFoundException(id);
         }
 
         return ResponseEntity.ok(
@@ -55,7 +60,7 @@ public class UserController {
 
     @PostMapping
     public ResponseEntity<User> create(
-            @RequestBody CreateUserRequest request
+            @Valid @RequestBody CreateUserRequest request
     ) {
         User user = new User(
                 2L,
