@@ -2,6 +2,10 @@ package com.learning.boot.user;
 
 import jakarta.persistence.*;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+
 @Entity
 @Table(name = "users")
 public class User{
@@ -20,6 +24,13 @@ public class User{
             unique = true
     )
     private String email;
+
+    @OneToMany(
+            mappedBy = "user",
+            cascade = CascadeType.ALL,
+            orphanRemoval = true
+    )
+    private List<Order> orders = new ArrayList<>();
 
     protected User() {
         // Required by JPA
@@ -40,6 +51,20 @@ public class User{
 
     public String getEmail() {
         return email;
+    }
+
+    public List<Order> getOrders() {
+        return Collections.unmodifiableList(orders);
+    }
+
+    public void addOrder(Order order) {
+        orders.add(order);
+        order.setUser(this);
+    }
+
+    public void removeOrder(Order order) {
+        orders.remove(order);
+        order.setUser(null);
     }
 
 }
