@@ -1,0 +1,6 @@
+scrape_configs:
+  - job_name: learning-api
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets:
+          - learning-api:8080

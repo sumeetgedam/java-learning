@@ -2,6 +2,7 @@ package com.learning.boot.user;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 
 import java.util.Optional;
 
