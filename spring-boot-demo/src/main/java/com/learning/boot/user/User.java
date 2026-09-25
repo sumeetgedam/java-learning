@@ -67,4 +67,8 @@ public class User{
         order.setUser(null);
     }
 
+    public void changeEmail(String email){
+        this.email = email;
+    }
+
 }

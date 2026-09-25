@@ -11,7 +11,7 @@
 7. What is the difference between liveness and readiness?
 8. Why should external dependencies usually not affect liveness?
 9. What is a metric counter?
-10. What is a guage?
+10. What is a gauge?
 11. What is a timer?
 12. What is metric cardinality?
 13. Why are user IDs risky metric tags?
@@ -162,6 +162,6 @@
 
 ```text
 Observability combines logs, metrics, and traces to reveal the behavior of a running system.
-Spring Boot Actuator exposes operational endpoints, Micrometer records metrics and overvations, health groups support
+Spring Boot Actuator exposes operational endpoints, Micrometer records metrics and observation, health groups support
 deployment probes, and management endpoints must be secured and kept free of sensitive information
 ```
