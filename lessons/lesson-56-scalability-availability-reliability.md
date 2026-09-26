@@ -1,0 +1,556 @@
+# Lesson 56: Scalability, Availability, and Reliability
+
+## Questions
+
+1. What is scalability?
+2. What is the difference between vertical and horizontal scaling?
+3. What is throughput?
+4. What is latency?
+5. Why are p95 and p99 useful ?
+6. What is capacity planning?
+7. Why is headroom important?
+8. What is availability?
+9. What is reliability?
+10. What is fault tolerance?
+11. What is redundancy?
+12. What is the difference between active-active and active-passive?
+13. What is graceful degradation?
+14. What is a bulkhead?
+15. What is a cascading failure?
+16. What does a circuit breaker do?
+17. What is load shedding?
+18. What is an SLI?
+19. What is an SLO?
+20. What is an error budget?
+21. What are RTO and RPO>
+22. How do deployment strategies improve reliability?
+
+## My summary
+
+- Scalability
+  - It is a system's ability to handle increased workload by adding resources or improving efficiency
+  - Workload can grow through :
+    - more users
+    - more requests
+    - more data
+    - more background jobs
+    - more concurrent connections
+  - A system that handles 100 requests per second may need to handle :
+    - 1,000 requests per second
+    - 10,000 requests per second
+    - 1,000,000 requests per second
+  - The design must explain how capacity increases.
+- Vertical scaling
+  - this means increasing the resources of one machine
+    - more CPU
+    - more memory
+    - faster disks
+    - higher network capacity
+  - examples :
+    - 4 CPU cores, 16 GB RAM
+    - 32 CPU cores, 128 GB RAM
+  - Advantages :
+    - Simple operational mdel
+    - No distributed coordination
+    - No load-balancing complexity
+    - Often easy to implement initially
+  - Disadvantages :
+    - Hardware limits
+    - Expensive high-end machines
+    - One machine may remain a single point of failure
+    - Scaling may require restart or migration.
+  - Vertical scaling is often useful early, but it eventually reaches physical or financial limits.
+- Horizontal Scaling
+  - It means adding more machines or service instances
+  - Load balancer 
+    - Instance A
+    - Instance B
+    - Instance C
+    - Instance D
+  - Advantages 
+    - Higher capacity
+    - Better fault tolerance
+    - Incremental scaling
+    - Works well with cloud infrastructure
+  - Disadvantages
+    - Requires load balancing
+    - Requires stateless or externally stored state
+    - Introduces coordination complexity
+    - Requires distributed monitoring and deployment
+  - Horizontal scaling is generally the preferred strategy for stateless application services.
+- Throughput
+  - It measures how much work a system completes over time.
+  - Examples : 
+    - Requests per second
+    - Messages per second
+    - Orders per minute
+    - Rows processed per batch
+  - Formula : 
+    - Throughput = completed work / unit of time
+  - Example : 
+    - 5,000 requests completed in 10 seconds
+    - throughput = 500 requests/second
+  - High throughput does not necessarily mean low latency
+- Latency
+  - It measures how long one operation takes
+  - Examples:
+    - Database query latency
+    - HTTP request latency
+    - Kafka processing latency
+    - End-to-End order latency
+  - If 1,000 requests are measured, do not look only at the average
+  - Useful percentiles : 
+    - p50   -> median
+    - p95   -> 95% of requests are faster
+    - p99   -> 99% of requests are faster
+    - p99.9 -> 99.9% of requests are faster
+  - Example : 
+    - p50 = 20ms
+    - p95 = 80ms
+    - p99 = 500ms
+  - Most requests are fast, but the slowest 1% may be significantly slower
+  - Tail latency matters because users and upstream services experience slow requests directly.
+- Latency vs throughput
+  - These are different goals
+  - Latency optimization
+    - Focuses on : 
+      - How quickly one request completes
+    - Techniques :
+      - Caching
+      - Fewer network calls
+      - Efficient algorithm
+      - Connection reuse
+      - Reduced allocation
+  - Throughput optimization
+    - Focuses on : 
+      - How much work completes over time
+    - Techniques : 
+      - Batching
+      - Parallel processing
+      - Asynchronous work
+      - Connection pooling
+      - Efficient resource utilization
+    - A design may improve throughput while increasing individual-request latency :
+      - Batch 1,000 events together
+      - Higher throughput
+      - Each event waits for the batch
+    - Always identify the actual performance objective
+- Capacity planning
+  - This estimates the resources needed to handle expected workload
+  - Example assumptions :
+    - 10 million users
+    - 1 million daily active users
+    - 100,000 requests per minute at peak
+    - Average request size : 10kb
+    - Peak-to-average ratio: 5
+  - Estimate : 
+    - Peak requests per second = 100,000 / 60 = 1,667 requests / seconds
+    - If one instance safely handles 200 requests per second :
+      - Required instances = 1,667 / 200  = 8.34
+    - with headroom : 
+      - 9 instances x 1.5 safety factor
+      - 14 instances
+    - Capacity planning should include : 
+      - Peak traffic
+      - Growth rate
+      - Failure capacity
+      - Deployment capacity
+      - Resource limits
+    - Do not plan only for average traffic
+- Headroom
+  - It is unused capacity reserved for :
+    - Traffic spike
+    - Instance failure
+    - Deployments
+    - Background jobs
+    - Unexpected workload
+    - Performance degradation
+  - A system running permanently at 100% utilization is fragile
+  - Example : 
+    - Normal utilization: 50%
+    - Peak utilization: 75%
+    - Reserved failure capacity: 25%
+  - Headroom is not wasted capacity, it provides resilience
+- Availability
+  - It measures the proportion of time a service si usable
+    - Availability = successful available time / total time
+  - Availability can also be measured from request outcomes : 
+    - Availability = successful requests / total requests
+  - The exact definition must be documented
+  - A service may be technically running but unavailable from the client's perspective if:
+    - Requests time out
+    - Errors are returned
+    - Authentication fails
+    - Critical data cannot be accessed
+- Availability 
+  - Availability target should be tied to business requirements
+  - Higher availability generally costs more :
+      - More replicas
+      - Multiple zones
+      - Automated failover
+      - Operational staffing
+      - Disaster recovery
+      - Complex testing
+  - Do not promise five nines when the business only needs three or when the architecture cannot support it.
+  - Approximate annual downtime : 
+
+| Availability | Downtime per year     |
+|--------------|-----------------------|
+| 99%          | 3 days 15 hours       |
+| 99.9%        | 8 hours 46 minutes    |
+| 99.99%       | 52 minutes 34 seconds |
+| 99.999%      | 5 minutes 15 seconds  | 
+ 
+- Reliability
+  - It is the probability that a system performs correctly over a period of time.
+  - Reliability includes : 
+    - Correct response
+    - Data integrity
+    - Durability
+    - Failure recovery
+    - Predictable behavior
+  - A service can be available but unreliable
+    - Return HTTP 200
+    - Returns incorrect account balance
+  - A reliable system should : 
+    - Reject invalid operations
+    - Preserve committed data
+    - Recover from failures
+    - Avoid duplicate side effects
+- Fault tolerance
+  - It means continuing to operate despite component failure
+  - Example ; 
+    - Three application instance
+    - One instance fails
+    - Two instances continue serving
+  - Fault tolerance requires : 
+    - Redundancy
+    - Failure detection
+    - Traffic removal
+    - Recovery or replacement
+  - Redundancy alone is insufficient if the system continues sending traffic to failed components
+- Redundancy
+  - This provides multiple components capable of performing the same role
+  - Examples : 
+    - Multiple application instances
+    - Database replicas 
+    - Multiple availability zones
+    - Multiple network paths
+    - Replicated Kafka brokers
+  - Active - Active
+    - All instances serve traffic
+      - Instance A -> active
+      - Instance B -> active
+      - Instance C -> active
+    - Advantages : 
+      - Better resource utilization
+      - Faster failover
+      - Capacity available during normal operation
+  - Active - Passive
+    - One instance serves traffic while another waits
+      - Primary -> active
+      - Standby -> passive
+    - Advantages :
+      - Simpler state management
+      - Useful for some stateful systems
+    - Disadvantages :
+      - Passive capacity may be unused
+      - Failover may take longer
+- Availability Zones
+  - A system running in one zone may fail because of : 
+    - Power outage
+    - Network failure
+    - Cloud infrastructure problem
+    - Deployment error
+  - Deploying across zones reduces correlated failure risk : 
+    - Load balancer
+      - Zone A
+        - Instances 1
+        - Instances 2
+      - Zone B
+        - Instance 3
+        - Instance 4
+      - Zone C
+        - Instance 5
+        - Instance 6
+  - Multi-zone deployment introduces : 
+    - Cross-zone network latency
+    - Replication considerations
+    - More complex operations
+    - Higher infrastructure cost
+- Load balancing
+  - A load balancer distributes traffic across available instances
+  - Common algorithms :
+    - Round robin
+    - Least connections
+    - Weighted routing
+    - Random selection
+    - Consistent hashing
+    - latency-aware routing
+  - Health checks 
+    - The load balancer should stop routing traffic to unhealthy instances
+      - Health check succeeds ---> receive traffic
+      - Health check fails    ---> removed from rotation
+    - A health check should test whether the instance can serve the intended traffic
+    - Avoid health check that always returns success while the application cannot access critical dependencies
+- Health checks and dependency design
+  - Not every dependency should affect every health signal
+  - Liveness
+    - Should the process be restarted?
+    - Usually checks : 
+      - Application process
+      - Basic runtime health
+  - Readiness
+    - Should this instance receive traffic?
+    - May check : 
+      - Database connectivity
+      - Required configuration
+      - Message broker availability
+      - Critical downstream services
+  - Avoid putting every dependency into liveness : 
+    - Database outage
+    - All instances fail liveness
+    - Orchestrator restarts all instances
+    - Recovery becomes worse
+- Graceful degradation
+  - It means reducing functionality instead of failing completely
+  - Example : 
+    - Primary product API works
+    - Recommendation unavailable
+    - Return : Product details + empty recommendations
+    - Rather than : Entire page fails
+  - Possible degraded behavior : 
+    - Serve cached data
+    - Disable optional features
+    - Queue work for later
+    - Return partial response
+    - Use a fallback provider
+    - Reduce result size
+  - Use graceful degradation only when stale or incomplete data is acceptable
+  - Do not degrade critical operations silently : 
+    - Payment authorization
+    - Account balance
+    - Inventory reservation
+- Fallbacks
+  - A fallback provides alternative behavior when a dependency fails
+  - A fallback should be
+    - Explicit
+    - Observable
+    - Safe
+    - Bounded
+    - Business-approved
+  - Bad fallback : 
+    - Return success even through payment status is unknown
+  - Good fallback :
+    - Return "payment pending" and reconcile later
+- Bulkheads
+  - This prevents one failing workload from consuming all shared resources
+  - without bulkheads : 
+    - Slow payment service
+    - all request threads blocked
+    - profile requests also fail
+  - With separate resource pools : 
+    - Payment calls -> pool A
+    - Profile calls -> pool B
+    - Payment failure does not consume all profile capacity
+  - Bulkheads can separate : 
+    - Thread pools 
+    - Connection pools
+    - Queue
+    - Rate limits
+    - Worker groups
+- Cascading failures
+  - A cascading failure spreads from one component to others
+    - Service B slows down
+    - Service A waits
+    - Service A threads are exhausted
+    - Service C cannot call Service A
+    - More requests time out
+  - Common causes : 
+    - Missing timeouts
+    - Unlimited retries
+    - Unbounded queues
+    - Shared thread pools
+    - Shared connection pool
+    - Synchronous dependency chains
+  - Mitigations : 
+    - Timeouts
+    - Circuit breakers
+    - Bulkheads
+    - Bounded queues
+    - Load shedding
+    - Backpressure
+    - Fallbacks
+- Circuit breakers
+  - It prevents repeated calls to a failing dependency
+  - States : 
+    - Closed
+      - Requests flow normally
+    - Open
+      - Calls fail fast without  reaching dependency
+    - Half-open
+      - Limited test requests determine recovery
+  - Flow : 
+    - Closed
+      - repeated failures
+    - Open
+      - wait period
+    - Half-open
+      - success -> Closed
+      - failure -> Open
+  - A circuit breaker protects the caller and the failing dependency
+  - It does not fix the dependency, it controls failure propagation
+- Load shedding
+  - This intentionally rejects work when capacity is exhausted
+  - Examples :
+    - HTTP 429 TOO MANY REQUESTS
+    - HTTP 503 SERVICE UNAVAILABLE
+    - Drop low-priority events
+    - Reject new background jobs
+  - This is better than accepting unlimited work and eventually failing everthing
+  - Load shedding requires :
+    - Capacity thresholds
+    - Priority classification
+    - Clear client behavior
+    - Retry guidance
+    - Monitoring
+- Rate limiting 
+  - It controls how much traffic a client or operation can generate
+  - Example : 
+    - 100 requests per minute per user
+  - Common algo :
+    - Fixed window
+    - Sliding window
+    - Token bucket
+    - Leaky bucket
+  - Rate limiting protects :
+    - Application capacity
+    - Database capacity
+    - External provider quotas
+    - Fairness between clients
+  - It can be implemented at : 
+    - API gateway 
+    - Load balancer
+    - Application 
+    - Distributed cache
+    - Service mesh
+- Service-level indicators
+  - An SLI is a measured indicator of service behavior
+  - Examples : 
+    - Successful request percentage
+    - Request latency 
+    - Queue processing delay
+    - Payment completion rate
+    - Data freshness
+  - Example : 
+    - HTTP availability SLI = successful requests / valid requests
+    - Latency SLI : Percentage of request completed under 200 ms
+  - SLIs should measure user-visible behavior where possible
+- Service-level objectives
+  - An SLO is a target for an SLI
+  - Examples : 
+    - 99.9% of valid requests succeed monthly
+    - 99% of requests complete under 300 ms
+    - 99.95% of payments complete successfully
+  - SLOs should be  : 
+    - Measurable 
+    - Meaningful
+    - Time-bounded
+    - Business-relevant
+  - An SLO is not the same as SLA
+    - SLO --> internal engineering target
+    - SLA --> contractual customer commitment
+- Error Budgets : 
+  - If the SLO is : 
+    - 99.9% availability
+  - The permitted failure budget is 0.1%
+  - This is the error budget
+  - Teams can use the budget to decide how much rick is acceptable for :
+    - Feature releases
+    - Infrastructure changes
+    - Refactoring
+    - Performance experiments
+  - If error budget is exhausted :
+    - Prioritize reliability work
+    - Slow risk deployments 
+    - Investigate incidents
+  - Error budget connect engineering velocity with reliability
+- Recovery time and recovery point
+  - RTO
+    - Recovery Time Objective : 
+      - How quickly must service be restored
+    - Example : 
+      - RTO = 30 minutes
+  - RPO :
+    - Recovery Point Objective
+      - How much data loss is acceptable ?
+    - Example :
+      - RPO = 5 minutes
+  - A system may be designed to restore service within 30 minutes while losing no more than 5 minutes of data.
+  - These requirements influence ; 
+    - Replication
+    - Backups
+    - Failover
+    - Disaster recovery
+    - Storage design
+- Deployment reliability
+  - A reliable architecture can still be damaged by unsafe deployment
+  - Techniques :
+    - Rolling deployment
+      - Replace instances gradually
+        - Old A, Old B, Old C
+        - New A, Old B, Old C
+        - New A, New B, Old C
+        - New A, New B, New C
+    - Blue-green deployment
+    - Canary deployment
+      - Send a small percentage of traffic to the new version
+        - 99% -> old version
+        - 1%  -> new version
+      - Monitor before increasing traffic
+    - Feature flags
+    - Automated rollback 
+    - Backward-compatible schema changes
+- Capacity and failure planning
+  - Suppose a service has four instances and normally requires three
+    - Normal : 
+      - 4 instances
+      - 3 required
+      - 1 headroom
+  - If one fails :
+    - 3 remaining
+    - System still operates
+  - The design should define : 
+    - How many failure can be tolerated ?
+    - At what capacity?
+    - For how long?
+  - This is a failure budget, not just a nominal replica count
+- Example : Reliable order API
+  - Client
+  - API Gateway
+    - rate limiting
+    - authentication
+    - load balancing
+  - Order Service
+    - timeout to payment service
+    - circuit breaker
+    - bounded worker pool
+    - database transaction
+    - event publication
+  - Payment Service
+    - idempotency
+    - retry policy
+    - provider timeout
+  - If payment is temporarily unavailable:
+    - Order created as PAYMENT_PENDING
+    - Payment event queued
+    - Payment retried asynchronously
+    - Client receives accepted/pending state
+  - This is often safer than holding the client request open while repeatedly calling the payment provider
+
+```text
+Scalability determines how a system handles increasing workload, availability measures whether it can serve requests,
+and reliability measures whether it behaves correctly over time.
+Robust systems use redundancy, headroom, health checks, timeouts, circuit breakers, bulkheads, graceful degradation, load shedding, 
+and measurable SLOs
+```
