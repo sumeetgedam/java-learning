@@ -1,0 +1,482 @@
+# Lesson 55: Distributed Systems Foundations
+
+## Questions
+
+1. What is a distributed system?
+2. Why is a remote call different from a local method call?
+3. What is independent failure?
+4. What is partial failure?
+5. Why does a timeout not prove that an operation failed?
+6. What is the difference between horizontal and vertical scaling?
+7. Why do stateless services scale more easily?
+8. What is availability?
+9. What is reliability?
+10. What is durability?
+11. What is consistency?
+12. What is the difference between replication and partitioning?
+13. What does a loa balancer do?
+14. What is backpressure?
+15. What is idempotency?
+16. Why is distributed state difficult?
+17. Why is global time unreliable in distributed systems?
+18. Why should every remote call have a bounded timeout?
+19. Why can retries create a retry storm?
+20. What questions should be asked when designing a distributed system?
+
+## My summary
+
+- What is a distributed system?
+  - A distributed system is a collection of independent computers that work together and appear to users as one system.
+  - examples : 
+    - Microservices applications
+    - Distributed database
+    - Kafka cluster
+    - Cloud application
+    - Payment platform
+    - Search engine
+  - Basic model : 
+    - Client
+    - Service A
+    - Service B
+    - Database cluster
+  - Each component may run on a different machine, process, container, or data center.
+- Single-process vs distributed system
+  - Single-process application
+    - Application
+      - Business logic
+      - Database access
+      - In-memory state
+    - communication is usually : methodCall()
+    - the call is local and relatively predictable
+  - Distributed application
+    - flow
+      - Service A
+        - network
+      - Service B
+        - network
+      - Database
+    - communication becomes : 
+      - request
+      - network
+      - remote process
+      - network
+      - response
+    - A remote call can : 
+      - take an unpredictable amount of time
+      - Fail
+      - Return an error
+      - Succeed but lose the response
+      - Execute twice due to retries
+      - Reach a partially unavailable service.
+- The fallacies of distributed computing
+  - Distributed systems violate assumptions that are often safe in local applications
+  - common incorrect assumptions : 
+    - the network is reliable
+    - latency is zero
+    - bandwidth is infinite
+    - the network is secure
+    - topology does not change
+    - there is one administrator
+    - transport cost is zero
+    - the network is homogeneous
+  - example : paymentClient.charge(request)
+    - this looks like a local method call, but it may involve: 
+      - DNS lookup
+      - TCP connection
+      - TLS handshake
+      - Load balancer
+      - Remote service
+      - Database
+      - Response transmission
+  - therefore, every remote call requires : 
+    - timeout
+    - error handling
+    - retry policy, when safe
+    - observability
+    - idempotency analysis
+- Independent failure
+  - In a distributed system, components can fail independently
+    - Service A -> healthy
+    - Service B -> unavailable
+    - Database -> healthy
+    - Network -> degraded
+  - The whole application may be partially functional:
+    - User profile -> work
+    - Payment -> unavailable
+    - Notifications -> delayed
+  - This is different from single process application where one process failure may stop everything
+- Partial failure
+  - A partial failure occurs when some components work while others fail
+  - Example : 
+    - Order creation succeeds
+    - Payment request times out
+    - Notification service is unavailable
+    - The system now has an ambiguous state:
+      - was payment processed
+      - did the request fail before reaching payment?
+      - did payment succeed but th response got lost?
+    - A timeout does not prove that the remote operation did not happen
+    - The operation may have succeeded while the response was delayed
+- Failure categories
+  - Process failure
+    - A service crashes : 
+      - Service B stops
+  - Network failure
+    - A request or response is lost
+      - Service A -> request lost
+      - Service B -> response lost
+  - Timeout
+    - The response does not arrive within the expected period
+  - Overload
+    - A component is alive but cannot process work fast enough:
+  - Data failure
+    - Invalid, corrupted, or incompatible data causes processing failure
+  - Dependency failure
+    - A service depends on another unavailable service
+- Timeouts
+  - Every remote operation should have a bounded timeout
+  - A timeout protects the caller's resources.
+  - typical categories : 
+    - Connection timeout : 
+      - time to establish a connection
+    - Read timeout:
+      - time waiting for response data
+    - Request timeout : 
+      - total allowed operation time
+    - Database timeout : 
+      - time allowed for a database operation
+  - A timeout should be chosen based on the operation's latency adn business requirements.
+- Retries can make failure worse 
+  - suppose a service is overloaded
+    - 100 requests arrive
+    - service handle 50
+    - 50 requests timeout
+  - if every caller retries twice
+    - 50 original retries
+    - 100 additional retries
+  - the service receives more load while already unhealthy
+  - This is called a `retry storm`
+  - Retries should generally include : 
+    - Limited attempts
+    - Exponential backOff
+    - Jitter
+    - Exception classification
+    - Overall deadline
+  - Retry only operations that are safe to repeat or protected by idempotency
+- Scalability
+  - Scalability is the ability of a system to handle increased workload
+  - workload may increase through:
+    - more users
+    - more request per user
+    - more stored data
+    - more event
+    - more concurrent operations
+  - `Vertical scaling`
+    - increase resources on one machine
+      - more CPU
+      - more memory
+      - Faster storage
+  - `Horizontal scaling`
+    - add more instances
+      - Instance A
+      - Instance B
+      - Instance C
+    - Traffic is distributed across instances:
+      - Load balancer
+        - Instance A
+        - Instance B
+        - Instance C
+  - Horizontal scaling is often more flexible, but it requires
+    - stateless application design
+    - shared or distributed state
+    - Load balancing
+    - coordination
+    - observability
+- Stateless services
+  - A stateless service does not depend on local memory to retain user-specific state between requests
+  - Preferred :
+    - Request
+    - Any instance
+    - shared database / cache
+  - Risky:
+    - request 1 -> instance A stores session locally
+    - request 2 -> instance B cannot find session
+  - stateless services make horizontal scaling easier.
+  - externalize state into :
+    - Database 
+    - Distributed cache
+    - Object storage
+    - Message broker
+  - stateless does not mean the system has state, it means important state is not tied to one application instance.
+- Availability
+  - Availability measures whether a system is operational and able to serve requests
+  - simplified formula:
+    - `Availability = uptime / total observation time`
+  - higher availability generally requires
+    - redundancy
+    - failover
+    - health checks
+    - replication
+    - deployment safety
+    - failure isolation
+    - operational maturity
+  - Availability must be defined for a specific boundary
+    - API availability
+    - Database availability
+    - Complete business-operation availability
+
+| Availability | Downtime                        |
+|--------------|---------------------------------|
+| 99%          | ~3.65 days downtime per year    |
+| 99.9%        | ~8.76 hours downtime per year   |
+| 99.99%       | ~52.6 minutes downtime per year |
+| 99.999%      | ~5.26 minutes downtime per year |
+
+- Reliability
+  - Reliability is the ability to perform correctly over time despite failures
+  - A system may be available but unreliable
+    - API responds with HTTP 200
+    - Data is incorrect
+  - Or reliable but temporarily unavailable:
+    - System safely rejects requests during maintenance
+  - Reliability includes
+    - Correctness
+    - Durability
+    - Failure recovery
+    - Data integrity
+    - Predictable behavior
+- Durability
+  - It means committed data is not lost after a successful operation
+  - examples :
+    - Database commit
+    - Durable message publication
+    - Replicated object storage
+  - A successful response should not be returned before the system has achieved the required durability guarantee
+    - example :
+      - payment marked successful in memory only
+      - is not durable if the process crashes immediately afterwards
+- Consistency
+  - It describes what values readers observe after writes
+  - A simple strong-consistency expectation:
+    - Write value X
+    - subsequent read returns X
+  - With eventual consistency:
+    - Write value x
+    - some readers may temporarily see old value
+    - All replicas eventually converge to X
+  - Neither is universally better
+  - Use strong consistency when stale data is dangerous
+    - Account balance
+    - Inventory reservation
+    - payment status
+  - Eventual consistency may be acceptable for : 
+    - Search index
+    - Analytics dashboard
+    - Recommendation data
+    - Social-media counters
+- Availability vs consistency trade=offs
+  - Under network partition or communication problems, distributed components may disagree
+  - Possible choices : 
+    - Reject requests until consistency can be guaranteed
+    - Continue serving requests with potentially stale data
+  - Example : 
+    - Inventory service cannot reach primary database
+      - Option A :
+        - Reject new purchases
+        - Protect correctness but reduces availability
+      - Option B : 
+        - Allow purchases using stale inventory
+        - improves availability but may oversell
+    - the correct choice depends on business requirements
+- Redundancy
+  - It means having multiple components capable of performing the same function
+  - Load balancer
+    - Service A
+    - Service B
+    - Service C
+  - If one instance fails :
+    - remaining instances continue serving
+  - Redundancy can exist at multiple level
+    - Application instances
+    - Database replicas
+    - Availability zones
+    - Data centers
+    - Network paths
+    - Message brokers
+  - Redundancy with health detection is incomplete:
+    - Failed instance remains in traffic rotation
+- Replication vs partitioning
+  - Replication
+    - Copies the same sata to multiple nodes
+      - Node A : users 1-100
+      - Node B : users 1-100
+      - Node C : users 1-100
+    - Benefits : 
+      - Higher availability
+      - Read scaling
+      - Failover
+      - Data redundancy
+  - Partitioning
+    - Splits different data across nodes
+      - Node A : users 1-1,000,000
+      - Node B : users 1,000,001-2,000,000
+    - Benefits : 
+      - Storage scaling
+      - Write scaling
+      - workload distribution
+  - These solve different problems and may be combined
+- Load balancing
+  - A load balancer distributes requests among service instances
+  - common strategies :
+    - Round robin
+      - Request 1 ---> A
+      - Request 2 ---> B
+      - Request 3 ---> C
+      - Request 4 ---> A
+    - least connection
+      - Routes traffic to the instance with the fewest active requests
+    - Weighted routing
+    - Hash-based routing
+      - uses a key
+      - hash(userID) --> selected instance
+      - useful when requests for a key should reach the same instance, but it requires careful handling of instance changes
+    - Latency-aware routing
+- Backpressure
+  - It prevents a fast producer from overwhelming a slower consumer
+    - Producer rate > Consumer rate
+    - Queue grows
+    - Memory increases
+    - Latency increases
+  - Possible strategies :
+    - Bounded queue
+    - Reject new work
+    - Slow producers
+    - Batch work
+    - Drop low-priority work
+    - Apply rate limits
+    - Scale consumers
+  - A system without backpressure can fail through uncontrolled queue growth
+- Queues and asynchronous work
+  - Synchronous flow : 
+    - Client waits
+    - Service A calls Service B
+    - Service B completes
+    - Response returned
+  - Asynchronous flow : 
+    - Client request
+    - Publish message 
+    - Return accepted response
+    - Consumer processes later
+  - Asynchronous processing can improve : 
+    - Responsiveness
+    - Fault isolation
+    - throughput
+    - load smoothing
+  - But it introduces
+    - delayed results
+    - duplicate processing
+    - Ordering concerns
+    -  retry complexity
+    - eventual consistency
+    - operational complexity
+- Idempotency
+  - An operation is idempotent if repeating it produces the same intended result as performing it once
+  - examples :
+    - PUT /users/42
+    - DELETE /users/42
+  - A payment request is nto naturally idempotent:
+    - POST /payments
+  - use an idempotency key : 
+    - client request
+      - idempotencyKey =  abc123
+  - the server stores :
+    - abc123 -> completed payment result
+  - A retry with the same key returns the original result instead of creating another payment.
+- Distributed state is difficult
+  - Local state : 
+    - `private long counter;`
+  - in a single process, this may be manageable
+  - with multiple instances : 
+    - instance A: Counter = 10
+    - instance B: Counter = 10
+    - instance C: Counter = 10
+  - incrementating locally does not produce one global counter
+  - Distributed state may require:
+    - Shared database
+    - Distributed cache
+    - Atomic broker operation
+    - Consensus system
+    - Partitioned ownership
+  - Ask: which component owns the truth?
+    - If ownership is unclear, inconsistencies become likely
+- The fallacy of global time
+  - Different machines do not necessarily agree perfectly about time
+    - Machine A : 10:00:00.100
+    - Machine B : 10:00:00.070
+  - Clock differences can cause problem with
+    - Event ordering
+    - Expiration
+    - Distributed locks
+    - Log correlation
+    - Conflict resolution
+  - Wall-clock timestamps are useful for observation, but they are not always sufficient to establish casual order
+- Design principles
+  - When designing a distributed system:  
+    - Assume failure
+      - Networks fail
+      - Processes crash
+      - Dependencies overload
+      - Messages duplicate
+    - Bound waiting
+      - Every remote call has a timeout
+      - Every queue has capacity
+      - Every retry has a limit
+    - Make operations retry-safe
+      - Idempotency keys
+      - Unique constraints
+      - Deduplication records
+      - Deterministic updates
+    - Separate critical non-critical work
+      - Payment confirmation --> Critical
+      - Analytics event      --> Non-Critical
+    - Prefer explicit ownership
+      - Which service owns the data
+      - which service changes it?
+      - which events describes the change?
+    - Measure behavior
+      - Latency
+      - Error rate
+      - Throughput
+      - Queue depth
+      - Saturation
+      - Retry count
+  - Example: Distributed order flow
+    - Client
+    - Order service
+      - stores order
+      - publishes OrderCreated
+        - Kafka
+          - Payment Service
+          - Inventory Service
+          - Notification Service
+  - Possible failures
+    - Order saved , event publish fails
+    - Payment succeeds, response is lost
+    - Inventory consumer receives event twice
+    - Notification service is unavailable
+    - Kafka consumer falls behind
+  - Required design techniques:
+    - Transactional outbox
+    - Idempotent consumers
+    - Retry policy
+    - Dead-letter handling
+    - timeouts
+    - Metrics
+    - Tracing
+
+```text
+Distributed systems consist of independent components communicating over unreliable networks.
+They require explicit handling for partial failure, timeouts, retries, duplicate messages, consistency,
+state ownership, and backpressure. Scalability and availability come from
+techniques such as horizontal scaling, redundancy, replication, partitioning and load balancing.
+```
