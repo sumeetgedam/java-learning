@@ -1,0 +1,647 @@
+# Lesson 60: System Design Interview Framework
+
+## Questions
+
+1. What are interviewers evaluating in a system-design interview?
+2. Why should requirements be clarified before proposing architecture?
+3. What is the difference between functional and non-functional requirements?
+4. Why are scale estimates important?
+5. How do you convert daily requests into request per second?
+6. What belongs in an API contract?
+7. What is the critical path?
+8. Why should non-critical work often be asynchronous?
+9. How should storage be selected?
+10. Why must data ownership be explicit?
+11. How should consistency be discussed?
+12. What failure modes should every design consider?
+13. What should be included in observability?
+14. Why should technologies not be selected before requirements?
+15. What makes a good trade-off explanation?
+16. What is the difference between a must-have and a nice-to-have requirement?
+17. How should security be included in system design?
+18. What is a reusable structure for answering system-design questions?
+
+## My summary
+
+- The goal is not to produce the "prefect" architecture immediately.
+- The goal is to show structured reasoning and make sound trade-off
+- What interviewers evaluate
+  - System-design interviews usually access whether you can : 
+    - Understand ambiguous requirements
+    - Estimate system scale
+    - Choose appropriate components
+    - Reason about bottlenecks
+    - Handle failure and consistency
+    - Explain trade-offs
+    - Communicate clearly
+    - naming technologies without explaining why they are needed is weak
+      - Strong answer
+        - We need a queue because notification delivery can be asynchronous and should not block the user-facing request. The queue also absorbs traffic spikes, but it introduces delayed delivery and duplicate-processing concerns
+- Interview flow
+  - use this structure :
+    - Clarify requirements
+    - Define scope
+    - Estimate scale
+    - Identify core entities
+    - Define APIs
+    - Design the high-level architecture
+    - Explain the main data flow
+    - Discuss storage and indexing
+    - Discuss scaling
+    - Discuss consistency and reliability
+    - Discuss observability and security
+    - Identify trade-offs and future improvements
+  - do not jump directly to  :
+    - "we will use microservices, kafka, redis, and cassandra..."
+  - First determine what the system actually needs
+- Step 1 : Clarify requirements
+  - Start with functional requirements
+  - example : design a URL shortener
+  - Ask : 
+    - Can users create short URLs?
+    - Can users redirect through short URLs?
+    - Can users delete URLs?
+    - Do URLs expire?
+    - Are analytics required?
+    - Can users customize aliases?
+  - Then clarify non-functional requirements :
+    - Expected traffic?
+    - Read/write ratio?
+    - Availability target?
+    - Latency target?
+    - Data retention?
+    - Geographic distribution?
+    - Security requirements?
+  - If the interviewer does not answer, state assumptions explicitly : 
+    - I will assume the system supports URL creation and redirection, but not user authentication or detailed analytics initially.
+  - This prevents uncontrolled scope growth
+- Functional vs Non-functional requirements
+  - Functional requirements
+    - Describe what the system does:
+      - create a URL
+      - Redirect a user
+      - Send a notification
+      - Reserve inventory
+      - Search product
+  - Non-functional requirements
+    - Describe how system should behave : 
+      - High availability
+      - Low latency
+      - Durability
+      - Scalability
+      - Security
+      - Consistency
+      - Observability
+  - example : 
+    - Functional :
+      - Create and redirect short URL
+    - Non-functional :
+      - 99.99% redirect availability
+      - p99 latency below 100ms
+      - Support 100,000 redirects / second
+  - both categories affect architecture
+- Step 2 : Define Scope
+  - A system-design interview usually has limited time
+  - Separate requirements into : 
+    - Must have
+    - Nice to have
+    - Out of scope
+  - example :
+    - Must have : 
+      - Create short URL
+      - Redirect short URL
+    - Nice to have : 
+      - Click analytics
+      - Expiration
+    - Out of scope : 
+      - User dashboard
+      - Billing
+      - Team permissions
+  - This keeps the discussion focused
+- Step 3 : Estimate scale
+  - You do not need perfect numbers
+  - You need reasonable assumptions and useful orders of magnitude
+  - Estimate : 
+    - Number of users
+    - Requests per second
+    - Read/write ratio
+    - Storage growth
+    - Bandwidth
+    - peak traffic
+  - example assumptions  :
+    - 100 million stored URLs
+    - 1 million new URLs per day
+    - 100 million redirects per day
+    - Read / write ratio = 100 : 1
+  - 1 ) Convert daily requests to per-second traffic
+    - Formula : 
+      - `average requests per second = daily requests / 86,400`
+    - for 100M redirects : 100,000,000/86,400 ~ 1,157 requests/second
+    - if peak traffic is 5x
+      - peak ~ 5,785 requests / second
+    - State the assumption :
+      - `I will design for approx 6,000 peak redirects per second`
+  - 2 ) Storage estimation
+    - Suppose each URL record requires approximately : 
+      - Short code           : 10 Bytes
+      - Original URL         : 500 Bytes
+      - Metadata             : 200 Bytes
+      - Indexes and overhead : 2 x data size
+    - Approx record size :
+      - 710 x 2 ~ 1.4kb
+    - for 100M
+      - 100,000,000 x 1.4kb 
+      - 140 GB
+    - Then add : 
+      - Replication
+      - Backup
+      - Indexes
+      - Growth
+    - Do not pretend the estimate is exact, explain what affects it
+  - 3 ) Bandwidth estimation
+    - If each redirect response is approximately 1KB and traffic is 6,000 requests / second : 
+      - 6,000 x 1KB
+      - ~ 6 MB / second
+    - This may be manageable for one service tier, but the architecture must also account for : 
+      - TLS overhead
+      - Request size
+      - Logging Replication
+      - CDN traffic 
+      - Peak bursts 
+- Step 4 : Identify core entities
+  - Define the primary data objects
+  - For a URL shortener :
+    - UrlMapping
+      - shortCode
+      - originalUrl
+      - createdAt
+      - expiresAt
+      - ownerId
+      - status
+  - For an order system :
+    - Order
+    - OrderItem
+    - Payment
+    - InventoryReservation
+    - Customer
+  - Avoid over-modeling every possible entity before understanding the main flow
+- Step 5 : Define APIs
+  - Define the important operations
+  - example  :
+    - POST /v1/urls
+      - Request :
+        - `{ "originalUrl" : "https://example.com/article" }`
+      - Response : 
+        - `{ "shortCode" : "aB32x" , "shortUrl" : "https://sho.rt/aB32x" }`
+    - Redirect
+      - GET /{shortCode}
+      - Response :
+        - 302 Found
+        - Location: https://example.com/article
+  - Mention : 
+    - Authentication
+    - Validation
+    - Idempotency
+    - Rate limiting 
+    - Status codes
+  - APIs exposes business operations and help clarify system boundaries
+- Step 6 : High-level architecture
+  - A basic architecture might be : 
+    - Client
+    - Load balancer
+    - URL service
+      - Cache
+      - Database
+      - Analytics Queue
+  - For redirection
+    - Client
+    - Load Balancer
+    - Redirect Service
+      - Cache lookup
+      - Database fallback
+  - For URL creation : 
+    - Client
+    - URL Service
+      - Generate unique code
+      - Store mapping
+      - Publish analytics / configuration event
+  - At this stage, identify components and responsibilities, not every implementation detail
+  - Component responsibility
+    - Every component should have a clear reason to exist
+    - Avoid adding component merely because they are popular
+
+| Component      | Responsibility                             |
+|----------------|--------------------------------------------|
+| Load Balancer  | Distribute traffic                         |
+| API Service    | Validate requests and apply business logic |
+| Cache          | Reduce database reads                      |
+| Database       | Durable source of truth                    |
+| Queue          | Decouple asynchronous work                 |
+| Worker         | Process background jobs                    |
+| Object Storage | Store large immutable data                 |
+| Metrics system | Collect operational measurements           |
+
+- Step 7 : Explain the main data flow
+  - Walk through the most important request
+  - Example : 
+    - create short URL
+      - Client sends original URL
+      - Load balancer routes request
+      - Service validates URL
+      - Service generates unique short code
+      - Mapping is written to database
+      - Mapping is added to cache
+      - Response returns short URL
+    - redirect flow
+      - Client requests /aB32x
+      - Service checks cache
+      - Cache hit returns redirect immediately
+      - Cache miss queries database
+      - Service populates cache
+      - Service returns redirect
+      - Analytics event is published asynchronously
+  - Separate critical path from non-critical work :
+    - Redirect response   -> critical
+    - Analytics recording -> asynchronous
+- Critical Path
+  - The critical path is the work required before responding to the client
+    - Example :
+      - Request
+      - Authentication
+      - Validation
+      - Database write
+      - Response
+  - Avoid adding unnecessary work to the critical path : 
+    - Request
+    - Database write
+    - Send email
+    - call analytics service
+    - call recommendation service
+    - Response
+  - Move independent work asynchronously when business rules permit :
+    - Request
+    - Database write
+    - Publish event
+    - Response
+    - Background consumers :
+      - email
+      - analytics
+      - recommendations
+- Storage selection
+  - Choose storage based on access pattern
+  - Relational Database
+    - Good for : 
+      - Transactions
+      - Relationships
+      - Constraints
+      - Strong consistency
+      - Structured data
+    - Examples :
+      - Orders
+      - Payments
+      - User accounts
+      - Inventory reservations
+  - Key-value store
+    - Good for : 
+      - simple key lookup
+      - high throughput
+      - low latency
+    - Examples :
+      - URL mapping 
+      - Sessions
+      - Feature flags
+      - Counters
+  - Document store :
+    - Good for :
+      - Flexible document - shaped data
+      - Variable schemas
+      - Aggregate reads
+  - Wide-column store
+    - Good for : 
+      - Very large write volumes
+      - Partition-key access
+      - Distributed storage
+  - Search Engine
+    - Good for : 
+      - Full-text search 
+      - Filtering
+      - Ranking
+      - Autocomplete
+  - Object storage
+    - Good for : 
+      - Images
+      - Videos
+      - Backups
+      - Large immutable files
+  - The most important question is
+    - What queries and consistency guarantee does the system need?
+- Database access patterns
+  - Do not choose a database based only on expected data volume
+  - Define :
+    - Primary read queries
+    - Primary write queries
+    - Query frequency
+    - Consistency requirements
+    - Transaction boundaries
+  - Example : 
+    - Query            : Find URL by shortCode
+    - Access pattern   : Exact key lookup
+    - Suitable storage : Key-value store or indexed relational table
+- Caching
+  - Caching is useful for frequently accessed data
+    - Client
+    - Service
+    - Cache
+      - Hit  -> response
+      - Miss -> database -> cache -> response
+  - Cache considerations : 
+    - Cache key
+    - TTL
+    - Eviction
+    - Invalidation
+    - Stale data
+    - Memory capacity
+    - Multi-instance sharing
+  - Use caching when : 
+    - Reads greatly exceed writes
+    - Data is expensive to compute
+    - Slight staleness is acceptable
+  - Do not cache automatically, incorrect cache design can cause
+    - Stale data
+    - Tenant-data leaks
+    - Memory exhaustion
+    - HArd-to-debug behavior
+- Scaling the read path
+  - Suppose a system is read-heavy : 
+    - 1 write
+    - 100 reads
+  - Possible techniques : 
+    - Cache hot values
+    - Read replicas
+    - CDN 
+    - Database indexes 
+    - Partitioning
+    - Precomputed views
+  - For a URL shortener : 
+    - Redirect Service
+    - Distributed cache
+      - cache miss
+      - Database read replica
+  - The database remains the source of truth, while the cache handles frequent lookups
+- Scaling the write path
+  - For high write volume :
+    - Partition data
+    - Batch writes
+    - Use append-only logs
+    - Use asynchronous processing
+    - Scale consumers
+    - Reduce contention
+  - Important questions : 
+    - What is the partition key ?
+    - will one key become hot ?
+    - are writes ordered ?
+    - can writes be retried ?
+    - can the database handle the index workload ?
+  - A poor partition key can create a hot partition
+    - Most traffic    -> one partition
+    - Other partition -> mostly idle
+- Consistency discussion
+  - For every important read/write path, state the required consistency
+  - example : 
+    - Payment status
+      - strong consistency for final state
+    - Analytics :
+      - Eventual consistency acceptable
+    - Search index : 
+      - Seconds of staleness acceptable
+    - User profile after updates
+      - Read your writes preferred
+  - Do not say : 
+    - The entire system is strongly consistent
+  - Instead, identify consistency per operation or data domain
+- Reliability discussion
+  - Address : 
+    - What happens if the database is unavailable ?
+    - What happens if the cache fails ?
+    - What happens if a message is delivered twice ?
+    - What happens if a downstream call times out ?
+    - What happens if one service instance crashes ?
+  - example : 
+    - Cache failure :
+      - Fallback to database
+      - Protect data with rate limits
+    - Queue failure :
+      - Persist critical event in outbox
+      - Retry publishing later
+    - Duplicate event ID and uniqueness constraint
+- Failure-mode table
+  - A useful interview technique is to summarize failures : 
+
+| Failure              | Impact                | Mitigation                           |
+|----------------------|-----------------------|--------------------------------------|
+| Cache unavailable    | Higher database load  | Database fallback, circuit breaker   |
+| Database replica lag | Stale reads           | Read from primary for recent writes  |
+| Consumer crashes     | Delayed processing    | Consumer restart, offset retry       |
+| Duplicate message    | Duplicate side effect | Idempotent Consumer                  |
+| Service timeout      | Blocked resources     | Deadline , bounded retry             |
+| One instance fails   | Reduced capacity      | Load balancer and replicas           | 
+| Region failure       | Regional outage       | Multi-zone or multi-region design    |
+
+- Security and abuse
+  - Mention relevant security concerns : 
+    - Authentication
+    - Authorization
+    - Encryption in transit
+    - Encryption at rest
+    - Input validation
+    - Secrets management
+    - Audit logging
+    - Tenant isolation
+    - Abuse prevention
+  - Security should be connected to the system's behavior.
+  - For a URL shortener : 
+    - Malicious URL scanning
+    - Rate limiting
+    - Abuse reports
+    - Phishing reports
+    - Safe redirect policy
+  - For a Payment system : 
+    - Idempotency
+    - Authorization
+    - Audit trail
+    - Fraud detection
+    - PII protection
+- Observability
+  - Every design should include : 
+    - Metrics :
+      - Request rate
+      - Error rate
+      - Latency percentiles
+      - Cache hit ratio
+      - Queue depth
+      - Consumer lag
+      - Database connections
+    - Logs : 
+      - Request ID
+      - Trace ID
+      - Operation
+      - Resource ID
+      - Outcome
+      - Failure reason
+    - Traces
+      - Gateway
+      - Service 
+      - Database 
+      - Queue
+      - External dependency
+    - Track user-visible SLOs, not only machine level metrics.
+- Trade-offs
+  - Every design has trade-offs
+  - Examples : 
+    - Cache : 
+      - Lower latency
+      - Higher stale-data and invalidation complexity
+    - Read replicas : 
+      - More read capacity
+      - Replica lag
+    - Asynchronous processing :
+      - Better responsiveness
+      - Eventual consistency and retries
+    - Sharding : 
+      - More write / storage capacity
+      - Cross-shard query complexity
+    - Strong consistency : 
+      - Easier correctness
+      - More coordination and lower availability during partitions
+  - A strong interview answer explicitly says : 
+    - I choose X because of requirement Y, accepting trade-off Z
+- Common system-design mistakes
+  - Starting with technology
+    - "We'll use kafka, Redis, and Cassandra."
+    - Why ? 
+      - What requirement requires each technology ?
+  - No scale estimates :
+    - without scale, you cannot justify : 
+      - Caching Sharding
+      - Replication
+      - Partition count
+  - Ignoring data ownership
+    - Multiple services writing the same tables creates coupling and consistency problems
+  - Ignoring failure
+    - A design that only describes the happy path is incomplete
+  - Overengineering too early
+    - Do not introduce ten microservices for a system that could start with one service and one database
+  - Confusing availability with correctness
+    - Returning a response is not enough if the response is wrong
+  - Ignoring hot keys
+    - A popular user, product, or partition may receive disproportionate traffic
+  - No API contract 
+    - Without API, component responsibilities remain vague
+  - No observability
+    - If you cannot measure failure or latency , you cannot operate the system
+- A practical whiteboard structure : 
+  - use this layout : 
+    - Top-left : 
+      - Requirements and assumptions
+    - Top-right : 
+      - Scale estimates
+    - Center :
+      - High level architecture
+    - Bottom-left : 
+      - Data model and APIs
+    - Bottom-right : 
+      - Failure, consistency, scaling, trade-off
+  - Keep the main request flow visible : 
+    - Client  
+    - gateway 
+    - service 
+      - Queue
+      - Workers
+    - cache
+  - Do not draw every internal class or method
+- Interview communication pattern
+  - Use phrases like : 
+    - "I'll make the following assumption......"
+    - "The critical path is....."
+    - "This data requires strong consistency, while that data can be eventually consistent"
+    - "The first bottleneck is likely...."
+    - "If the cache fails, the fallback is...."
+    - "This choice trades lower latency for weaker read freshness..."
+    - "I would validate this assumption with metrics such as...."
+  - When challenged : 
+    - Acknowledge the alternative
+    - Explain you choice
+    - State when you would choose the alternative
+  - Example : 
+    - `A relational database would be simpler initially,
+  I am choosing a key-value store because the dominant operation is an exact short-code lookup 
+  and the workload is extremely read-heavy. If we later need
+  relationships or complex analytics, I would add a separate relational or analytical 
+  store rather than forcing those queries into the key=value model.`
+- Generic system-design template
+  - Use this template in future interview : 
+    - Requirements
+      - Functional
+      - Non-Functional
+      - Out of scope
+    - Assumptions
+      - Users
+      - Traffic
+      - Data size
+      - Availability
+      - Latency
+    - APIs
+      - Endpoints
+      - Requests
+      - Responses
+      - Errors
+    - Data model
+      - Entities
+      - Keys Indexes
+      - Ownership
+    - High-level architecture
+      - Clients
+      - Gateway
+      - Services
+      - Storage
+      - Cache
+      - Queue
+    - Main flows
+      - Write path
+      - Read path
+      - Async path
+    - Scaling
+      - Horizontal scaling
+      - Caching
+      - Partitioning
+      - Replication
+    - Consistency
+      - Strong 
+      - Eventual
+      - Read-your-writes
+    - Reliability
+      - Timeouts
+      - Retries
+      - Idempotency
+      - Failover
+      - Backpressure
+    - Observability
+      - Metrics
+      - Logs
+      - Traces
+      - Alerts
+    - Security
+      - Authorization
+      - Authentication
+      - Encryption
+      - Abuse protection
+    - Trade-off
+      - Why this design ?
+      - What limitations remain?
+
+```text
+A strong system-design answer begins by clarifying requirements and estimating scale.
+It then defines APIs, data models, and a high level architecture 
+before discussing request flows, storage, caching, scaling, consistency, reliability,
+security, observability, and trade-offs. The goal is structured reasoning rather than prematurely naming technologies
+```
